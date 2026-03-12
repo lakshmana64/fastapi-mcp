@@ -492,6 +492,28 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
 
 ---
 
+## Comparison with Alternatives
+
+This project is often compared with
+[`tadata-org/fastapi_mcp`](https://github.com/tadata-org/fastapi_mcp), which has a much larger
+community footprint.
+
+| Area | This project (`fastapi-mcp`) | `tadata-org/fastapi_mcp` |
+|------|-------------------------------|---------------------------|
+| Community traction | Earlier-stage project | Large adoption/community |
+| Core goal | Auto-expose FastAPI endpoints as MCP tools | Same core goal |
+| Security hardening controls | Strong emphasis (strict production mode, runtime SSRF revalidation, granular quotas, limiter fail strategy) | Auth-focused, broad FastAPI-native ergonomics |
+| AI safety contracts | Structured `error_code`, `retryable`, `risk_level` metadata, agent-eval CI gate | Strong FastAPI-native MCP integration |
+| Operational controls | Explicit per-IP/per-identity/per-tool quotas and backend-failure policy | Broad usability and ecosystem maturity |
+
+Why choose this project:
+
+- You want explicit operational hardening defaults and knobs.
+- You want stronger machine-readable AI safety contracts out of the box.
+- You prefer a security- and policy-forward MCP layer with clear compatibility governance.
+
+---
+
 ## License
 
 [MIT](LICENSE)
