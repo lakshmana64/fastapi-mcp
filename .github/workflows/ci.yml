@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra redis
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Type check
+        run: uv run mypy fastapi_mcp
+
+      - name: Unit and integration tests
+        run: uv run pytest -q tests/test_parser.py tests/test_router.py tests/test_security.py
+
+  agent-evals:
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra redis
+
+      - name: Run agent eval suite
+        run: |
+          mkdir -p .artifacts/agent-eval-trend
+          uv run pytest -q tests/test_agent_eval.py --junitxml=.artifacts/agent-eval-trend/junit.xml
+
+      - name: Build trend report
+        run: |
+          python - <<'PY'
+          import json
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          from datetime import datetime, timezone
+
+          base = Path(".artifacts/agent-eval-trend")
+          root = ET.parse(base / "junit.xml").getroot()
+          suite = root.find("testsuite")
+          if suite is None:
+              tests = failures = errors = skipped = 0
+              elapsed = 0.0
+          else:
+              tests = int(suite.attrib.get("tests", 0))
+              failures = int(suite.attrib.get("failures", 0))
+              errors = int(suite.attrib.get("errors", 0))
+              skipped = int(suite.attrib.get("skipped", 0))
+              elapsed = float(suite.attrib.get("time", 0.0))
+
+          passed = max(0, tests - failures - errors - skipped)
+          report = {
+              "generated_at": datetime.now(timezone.utc).isoformat(),
+              "suite": "tests/test_agent_eval.py",
+              "tests": tests,
+              "passed": passed,
+              "failures": failures,
+              "errors": errors,
+              "skipped": skipped,
+              "elapsed_seconds": elapsed,
+          }
+
+          (base / "current.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+          md = "\n".join(
+              [
+                  "## Agent Eval Trend (Current Run)",
+                  "",
+                  f"- tests: {tests}",
+                  f"- passed: {passed}",
+                  f"- failures: {failures}",
+                  f"- errors: {errors}",
+                  f"- skipped: {skipped}",
+                  f"- duration_seconds: {elapsed:.3f}",
+              ]
+          )
+          (base / "current.md").write_text(md + "\n", encoding="utf-8")
+          print(md)
+          PY
+
+      - name: Publish agent eval summary
+        run: cat .artifacts/agent-eval-trend/current.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload agent eval trend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-eval-trend
+          path: .artifacts/agent-eval-trend/
